@@ -1,0 +1,22 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(git add:*)",
+      "Bash(git commit:*)",
+      "Bash(git checkout:*)",
+      "Bash(git push:*)",
+      "Bash(gh pr:*)",
+      "Bash(where gh:*)",
+      "Bash(docker:*)",
+      "Bash(python:*)",
+      "Bash(.venv/Scripts/python:*)",
+      "Bash(docker compose:*)",
+      "Bash(TEST_DATABASE_URL=postgresql+asyncpg://tripuser:trippass@localhost:5432/tripplanner_test DATABASE_URL=postgresql+asyncpg://tripuser:trippass@localhost:5432/tripplanner INTERNAL_API_KEY=test-key-ci STRIPE_WEBHOOK_SECRET=whsec_test_secret_for_ci REDIS_URL=redis://localhost:6379/0 .venv/Scripts/python:*)",
+      "Bash(TEST_DATABASE_URL=postgresql+asyncpg://tripuser:trippass@localhost:5432/tripplanner_test DATABASE_URL=postgresql+asyncpg://tripuser:trippass@localhost:5432/tripplanner INTERNAL_API_KEY=test-key-ci STRIPE_WEBHOOK_SECRET=whsec_test_secret_for_ci .venv/Scripts/python:*)",
+      "Bash(ls:*)",
+      "Bash(taskkill:*)",
+      "Bash(curl:*)",
+      "Bash(git:*)"
+    ]
+  }
+}
