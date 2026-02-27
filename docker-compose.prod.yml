@@ -1,0 +1,57 @@
+version: "3.9"
+
+# Production overrides — use with:
+#   docker-compose -f docker-compose.yml -f docker-compose.prod.yml up -d
+#
+# In production:
+# - Postgres and Redis are managed services (not run in compose)
+# - All secrets come from the hosting platform's secret/env injection
+# - The "image" field is set to a registry image (replace with your registry URL)
+# - Healthcheck retries are more conservative for cold starts
+
+services:
+
+  # Managed services — remove these blocks if using an external DB/Redis
+  postgres:
+    # In production, use a managed PostgreSQL (Railway, Neon, Supabase, RDS, etc.)
+    # Comment this block out and set DATABASE_URL in environment secrets instead.
+    restart: always
+
+  redis:
+    # In production, use a managed Redis (Railway, Upstash, Elasticache, etc.)
+    # Comment this block out and set REDIS_URL in environment secrets instead.
+    restart: always
+
+  api:
+    # Replace with your registry image tag after CI builds it:
+    # image: ghcr.io/your-org/trip-planner:${IMAGE_TAG}
+    restart: always
+    environment:
+      PROCESS_TYPE: api
+      ENVIRONMENT: production
+      LOG_LEVEL: INFO
+    healthcheck:
+      start_period: 30s
+
+  bot:
+    # image: ghcr.io/your-org/trip-planner:${IMAGE_TAG}
+    restart: always
+    environment:
+      PROCESS_TYPE: bot
+      ENVIRONMENT: production
+      LOG_LEVEL: INFO
+
+  worker:
+    # image: ghcr.io/your-org/trip-planner:${IMAGE_TAG}
+    restart: always
+    environment:
+      PROCESS_TYPE: worker
+      ENVIRONMENT: production
+      LOG_LEVEL: INFO
+
+  migrate:
+    # image: ghcr.io/your-org/trip-planner:${IMAGE_TAG}
+    environment:
+      PROCESS_TYPE: migrate
+      ENVIRONMENT: production
+    restart: "no"

@@ -1,0 +1,54 @@
+# ── Secrets — NEVER commit real env files ─────────────────────────────────────
+.env
+.env.local
+.env.*.local
+*.env
+
+# ── Python ─────────────────────────────────────────────────────────────────────
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+.Python
+*.egg
+*.egg-info/
+dist/
+build/
+wheels/
+.eggs/
+pip-wheel-metadata/
+*.whl
+
+# ── Virtual environments ────────────────────────────────────────────────────────
+.venv/
+venv/
+env/
+ENV/
+
+# ── Testing ────────────────────────────────────────────────────────────────────
+.pytest_cache/
+.coverage
+coverage.xml
+htmlcov/
+.mypy_cache/
+.ruff_cache/
+
+# ── Docker ─────────────────────────────────────────────────────────────────────
+# docker-compose.override.yml is OK to gitignore if it holds local overrides
+docker-compose.override.yml
+
+# ── OS / Editor ────────────────────────────────────────────────────────────────
+.DS_Store
+Thumbs.db
+*.swp
+*.swo
+.idea/
+.vscode/
+*.iml
+
+# ── Alembic generated artifacts ────────────────────────────────────────────────
+# (version files are committed — only local noise excluded)
+
+# ── Logs ───────────────────────────────────────────────────────────────────────
+*.log
+logs/

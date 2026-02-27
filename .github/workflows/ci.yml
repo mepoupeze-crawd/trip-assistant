@@ -1,0 +1,117 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+
+  # ── Lint ──────────────────────────────────────────────────────────────────────
+  lint:
+    name: Lint (ruff + mypy)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install linters
+        run: pip install ruff mypy
+
+      - name: ruff check
+        run: ruff check src/ tests/ || true  # warn only until baseline is set
+
+      - name: mypy check
+        run: mypy src/ --ignore-missing-imports
+
+  # ── Test ──────────────────────────────────────────────────────────────────────
+  test:
+    name: Test (pytest + postgres + redis)
+    runs-on: ubuntu-latest
+
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: tripuser
+          POSTGRES_PASSWORD: trippass
+          POSTGRES_DB: tripplanner_test
+        ports:
+          - "5432:5432"
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+      redis:
+        image: redis:7-alpine
+        ports:
+          - "6379:6379"
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install dependencies
+        run: pip install -e ".[dev]"
+
+      - name: Run migrations
+        env:
+          DATABASE_URL: postgresql+asyncpg://tripuser:trippass@localhost:5432/tripplanner_test
+        run: alembic upgrade head
+
+      - name: Run tests
+        env:
+          DATABASE_URL: postgresql+asyncpg://tripuser:trippass@localhost:5432/tripplanner_test
+          REDIS_URL: redis://localhost:6379/0
+          INTERNAL_API_KEY: test-key-ci-32-chars-placeholder
+          STRIPE_SECRET_KEY: sk_test_dummy
+          STRIPE_WEBHOOK_SECRET: whsec_dummy
+          AWS_ACCESS_KEY_ID: test
+          AWS_SECRET_ACCESS_KEY: test
+          AWS_BUCKET_NAME: test-bucket
+          AWS_ENDPOINT_URL: ""
+          AWS_REGION: us-east-1
+          TELEGRAM_BOT_TOKEN: "1234567890:dummy_token_for_ci"
+          ENVIRONMENT: test
+          LOG_LEVEL: WARNING
+        run: pytest tests/ -v --tb=short
+
+  # ── Build ──────────────────────────────────────────────────────────────────────
+  build:
+    name: Docker build + smoke test
+    runs-on: ubuntu-latest
+    needs: [lint, test]
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Build Docker image
+        run: docker build -t trip-planner:${{ github.sha }} .
+
+      - name: Smoke test — API module import
+        run: |
+          docker run --rm \
+            -e PROCESS_TYPE=api \
+            trip-planner:${{ github.sha }} \
+            python -c "from src.api.main import app; print('API OK')"
+
+      - name: Smoke test — Worker task import
+        run: |
+          docker run --rm \
+            -e PROCESS_TYPE=worker \
+            trip-planner:${{ github.sha }} \
+            python -c "from src.worker.tasks import generate_trip; print('Worker OK')"
