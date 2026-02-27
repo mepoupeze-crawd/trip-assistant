@@ -69,8 +69,6 @@ def upload_bytes(
             Key=key,
             Body=data,
             ContentType=content_type,
-            # Server-side encryption at rest
-            ServerSideEncryption="AES256",
         )
         log.info(
             "s3_upload_success",

@@ -301,14 +301,21 @@ def generate_trip(self: Task, trip_id: str, output_id: str) -> dict[str, str]:
         attempt=self.request.retries,
     )
 
+    def _run(coro):
+        loop = asyncio.new_event_loop()
+        try:
+            return loop.run_until_complete(coro)
+        finally:
+            loop.close()
+
     try:
-        pdf_url, docx_url = asyncio.run(_run_generation(trip_id, output_id))
+        pdf_url, docx_url = _run(_run_generation(trip_id, output_id))
         return {"trip_id": trip_id, "output_id": output_id, "status": "done"}
 
     except SoftTimeLimitExceeded as exc:
         error_msg = "Task timed out (soft limit exceeded)"
         log.error("generate_trip_soft_timeout", trip_id=trip_id, output_id=output_id)
-        asyncio.run(_mark_failed(output_id, error_msg))
+        _run(_mark_failed(output_id, error_msg))
         raise
 
     except Exception as exc:
@@ -334,5 +341,5 @@ def generate_trip(self: Task, trip_id: str, output_id: str) -> dict[str, str]:
             raise self.retry(exc=exc, countdown=countdown)
         else:
             # Final failure — mark as failed in DB
-            asyncio.run(_mark_failed(output_id, error_msg))
+            _run(_mark_failed(output_id, error_msg))
             raise

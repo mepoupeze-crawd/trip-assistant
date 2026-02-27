@@ -44,4 +44,7 @@ celery_app.conf.update(
     # ── Timezone ──────────────────────────────────────────────────────────────
     timezone="UTC",
     enable_utc=True,
+    # ── Windows compatibility ─────────────────────────────────────────────────
+    # prefork (default) requires UNIX fork(); use solo pool on Windows
+    worker_pool="solo",
 )
