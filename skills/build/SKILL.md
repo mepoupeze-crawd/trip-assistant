@@ -29,7 +29,7 @@ Read the plan document at `$ARGUMENTS[0]`. Extract:
 5. **Acceptance criteria** — how do we know it's done?
 6. **Risks** — what could go wrong?
 
-If the plan is vague or missing sections, stop and ask the user for clarification before proceeding.
+If the plan is vague or missing sections, **do NOT just ask the user to fill in gaps.** Instead, tell them: "This idea needs a structured plan first. Run `/plan [your idea]` to have the PM, Architect, and Tech Lead collaborate on a build-ready plan. Then come back with `/build [plan-path]`."
 
 ---
 
@@ -68,6 +68,73 @@ All builds                                        → include tech-lead
 ```
 
 If `$ARGUMENTS[1]` specifies a team size, select only the top N most relevant agents (always including tech-lead).
+
+### Validate Team Composition
+
+After selecting agents, validate the team is correct and complete. Don't just match keywords — verify coverage, efficiency, and risk.
+
+**Step 2.1 — Coverage Matrix**
+
+For each component in the plan, verify an agent owns it:
+
+```
+| Plan Component | Agent Owner | Confidence | Notes |
+|----------------|-------------|------------|-------|
+| [component 1]  | @[agent]    | [H/M/L]   | [why] |
+| [component 2]  | @[agent]    | [H/M/L]   | [why] |
+```
+
+If any component has NO owner → add the needed agent.
+If any component has TWO owners → split responsibilities explicitly.
+
+**Step 2.2 — Team Validation Checklist**
+
+```
+Coverage:
+- [ ] Every plan component has exactly one agent owner
+- [ ] Every integration boundary has agents on both sides
+- [ ] Critical concerns have dedicated agents (auth → security, tests → qa)
+
+Efficiency:
+- [ ] No agent without specific deliverables (remove idle agents)
+- [ ] Team size ≤ 7 (if larger, justify each agent or consolidate)
+- [ ] Workload roughly balanced (no single agent with 60%+ of work)
+
+Risk:
+- [ ] Cross-cutting concerns (timezone, errors, auth) assigned to one agent each
+- [ ] Dependencies between agents are explicit and minimal
+- [ ] Agent with highest workload identified — not overloaded
+```
+
+**Step 2.3 — Team Justification Table**
+
+Show why each agent is (or isn't) included:
+
+```
+| Agent | Include? | Justification | Deliverables |
+|-------|----------|---------------|-------------|
+| tech-lead | YES | Orchestration (always) | Contracts, task list, validation |
+| backend | [YES/NO] | [specific reason] | [specific deliverables] |
+| frontend | [YES/NO] | [specific reason] | [specific deliverables] |
+| ... | ... | ... | ... |
+```
+
+If any agent is borderline (confidence M/L), state the trade-off: "Including @designer adds UX quality but increases coordination. Excluding risks generic UI. Decision: [include/exclude] because [reason]."
+
+**Step 2.4 — Detect Missing Plan (Pre-Build Gate)**
+
+Before proceeding to Step 3, verify the plan has sufficient detail:
+
+```
+Required sections:
+- [ ] Components with technical details (not just names)
+- [ ] Stack/technology choices
+- [ ] Data model or schema (tables, fields, types)
+- [ ] API endpoints or interface definitions
+- [ ] Acceptance criteria (verifiable conditions)
+```
+
+If 2+ sections are missing or vague: **STOP.** Tell the user: "This plan needs more detail before building. Run `/plan [your idea]` to generate a complete plan, then come back with `/build`."
 
 ### Load Agent Context
 
