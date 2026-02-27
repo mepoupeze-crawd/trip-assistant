@@ -63,9 +63,15 @@ async def check_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
             trip_id=trip_id,
             status_code=exc.response.status_code,
         )
-        await update.message.reply_text(
-            "Something went wrong checking your trip status. Please try again later."
-        )
+        if exc.response.status_code == 404:
+            await update.message.reply_text(
+                "Your trip is still being queued for generation.\n\n"
+                "Please type /check again in a moment."
+            )
+        else:
+            await update.message.reply_text(
+                "Something went wrong checking your trip status. Please try again later."
+            )
         return
     except Exception as exc:
         log.error("check_status_error", user_id=user.id, trip_id=trip_id, error=str(exc))

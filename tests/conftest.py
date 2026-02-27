@@ -72,14 +72,22 @@ async def _create_tables() -> AsyncGenerator[None, None]:
 async def db_session() -> AsyncGenerator[AsyncSession, None]:
     """Async SQLAlchemy session with real Postgres (from CI env).
 
-    Each test gets its own session that is rolled back after the test,
-    keeping the database clean without hitting DROP TABLE.
+    Uses a connection-level transaction so that even when endpoint code calls
+    session.commit(), the actual DB is never touched — commits become SAVEPOINTs
+    and the outer connection rolls back after the test.
     """
-    async with _TestSessionLocal() as session:
-        # Begin a nested (SAVEPOINT) transaction so we can roll back after each test.
-        async with session.begin():
+    async with _test_engine.connect() as conn:
+        await conn.begin()
+        session = AsyncSession(
+            bind=conn,
+            join_transaction_mode="create_savepoint",
+            expire_on_commit=False,
+        )
+        try:
             yield session
-            await session.rollback()
+        finally:
+            await session.close()
+            await conn.rollback()
 
 
 # ---------------------------------------------------------------------------
@@ -98,7 +106,7 @@ async def client(db_session: AsyncSession) -> AsyncGenerator[AsyncClient, None]:
     # Import here to avoid issues when the app module is not yet created.
     # Marked with skip guard so syntax check passes even without full backend.
     try:
-        from src.api.app import app  # type: ignore[import]
+        from src.api.main import app  # type: ignore[import]
         from src.db.session import get_session
     except ImportError:
         pytest.skip("src.api.app not yet implemented by backend agent")
