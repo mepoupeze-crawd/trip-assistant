@@ -23,6 +23,12 @@ config = context.config
 if config.config_file_name is not None:
     fileConfig(config.config_file_name)
 
+# Override sqlalchemy.url with DATABASE_URL env var when available
+import os  # noqa: E402
+_db_url = os.getenv("DATABASE_URL")
+if _db_url:
+    config.set_main_option("sqlalchemy.url", _db_url)
+
 # Use the project's Base metadata for autogenerate support
 target_metadata = Base.metadata
 

@@ -19,6 +19,7 @@ from sqlalchemy import (
     String,
     Text,
     func,
+    text,
 )
 from sqlalchemy.dialects.postgresql import JSONB, UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
@@ -38,7 +39,7 @@ class User(Base):
         UUID(as_uuid=False),
         primary_key=True,
         default=_uuid,
-        server_default=func.gen_random_uuid().cast(Text),
+        server_default=text("gen_random_uuid()"),
     )
     telegram_id: Mapped[int] = mapped_column(BigInteger, unique=True, nullable=False)
     name: Mapped[str | None] = mapped_column(Text, nullable=True)
@@ -57,7 +58,7 @@ class Trip(Base):
         UUID(as_uuid=False),
         primary_key=True,
         default=_uuid,
-        server_default=func.gen_random_uuid().cast(Text),
+        server_default=text("gen_random_uuid()"),
     )
     user_id: Mapped[str] = mapped_column(
         UUID(as_uuid=False), ForeignKey("users.id"), nullable=False
@@ -92,7 +93,7 @@ class TripOutput(Base):
         UUID(as_uuid=False),
         primary_key=True,
         default=_uuid,
-        server_default=func.gen_random_uuid().cast(Text),
+        server_default=text("gen_random_uuid()"),
     )
     trip_id: Mapped[str] = mapped_column(
         UUID(as_uuid=False), ForeignKey("trips.id"), unique=True, nullable=False
@@ -122,7 +123,7 @@ class Recommendation(Base):
         UUID(as_uuid=False),
         primary_key=True,
         default=_uuid,
-        server_default=func.gen_random_uuid().cast(Text),
+        server_default=text("gen_random_uuid()"),
     )
     trip_id: Mapped[str] = mapped_column(
         UUID(as_uuid=False), ForeignKey("trips.id"), nullable=False
@@ -150,7 +151,7 @@ class Payment(Base):
         UUID(as_uuid=False),
         primary_key=True,
         default=_uuid,
-        server_default=func.gen_random_uuid().cast(Text),
+        server_default=text("gen_random_uuid()"),
     )
     trip_id: Mapped[str] = mapped_column(
         UUID(as_uuid=False), ForeignKey("trips.id"), nullable=False

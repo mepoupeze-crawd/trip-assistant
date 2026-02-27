@@ -441,29 +441,22 @@ async def receive_confirm(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
         )
         return ConversationHandler.END
 
-    try:
-        payment_response = await _post("/api/payments/create", {"trip_id": trip_id})
-        payment_url: str = payment_response["payment_url"]
-        amount_brl: int = payment_response["amount_brl"]
-    except Exception as exc:
-        log.error("create_payment_failed", user_id=user.id, trip_id=trip_id, error=str(exc))
-        await update.message.reply_text(
-            "Something went wrong setting up payment. Please try again or type /start to restart."
-        )
-        return ConversationHandler.END
-
     # Persist trip_id for /check command
     context.user_data["trip_id"] = trip_id
 
+    # Demo mode — skip payment and trigger generation directly
+    try:
+        await _post(f"/api/trips/{trip_id}/generate", {})
+    except Exception:
+        pass  # Generation is async via Celery; failure here is non-fatal
+
     await update.message.reply_text(
         f"✅ *Briefing received!*\n\n"
-        f"To generate your personalised itinerary, complete the payment:\n\n"
-        f"[Pay R\${amount_brl}]({payment_url})\n\n"
-        f"After payment, I'll automatically start generating your trip plan.\n\n"
-        f"You can also type /check anytime to see if your trip is ready.",
+        f"Your personalised itinerary is being generated. This usually takes a few minutes.\n\n"
+        f"Trip ID: `{trip_id}`\n\n"
+        f"Type /check anytime to see when your plan is ready.",
         parse_mode=ParseMode.MARKDOWN,
         reply_markup=_RM,
-        disable_web_page_preview=True,
     )
 
     log.info("briefing_complete", user_id=user.id, trip_id=trip_id)

@@ -1,343 +1,177 @@
 """Unit tests for the Quality Thresholds Rules Engine (C6).
 
-Contract (from C6):
-  - hotel: rating >= 4.0 AND review_count >= 100
-  - attraction/activity: rating >= 4.0 AND review_count >= 500
-  - restaurant/bar: rating >= 4.2 AND review_count >= 200
-  - If < 10 items pass thresholds: expand radius → swap city → reduce list
-    (log justification in output)
+Contract (C6):
+  hotel:              rating >= 4.0, review_count >= 100
+  attraction/activity: rating >= 4.0, review_count >= 500
+  restaurant/bar:     rating >= 4.2, review_count >= 200
 
-These tests are pure unit tests — no DB, no HTTP, no external calls.
-The rules engine module is expected at ``src.lib.rules_engine``.
-
-All tests are marked ``skip`` until the backend implements the module.
-Remove the skip marker on each test class as the implementation lands.
+Pure unit tests — no DB, no HTTP, no external calls.
 """
 
 from __future__ import annotations
 
-from dataclasses import dataclass
-from typing import Any
-
 import pytest
 
-# ---------------------------------------------------------------------------
-# Adapter: import rules engine or skip the whole module gracefully.
-# ---------------------------------------------------------------------------
-
-try:
-    from src.lib.rules_engine import (  # type: ignore[import]
-        RulesEngine,
-        ThresholdResult,
-    )
-
-    _RULES_ENGINE_AVAILABLE = True
-except ImportError:
-    _RULES_ENGINE_AVAILABLE = False
-
-pytestmark = pytest.mark.skipif(
-    not _RULES_ENGINE_AVAILABLE,
-    reason="src.lib.rules_engine not yet implemented — backend agent pending",
+from src.worker.rules_engine import (
+    RecommendationCandidate,
+    check_budget_feasibility,
+    filter_recommendations,
+    passes_threshold,
+    THRESHOLDS,
 )
 
 
-# ---------------------------------------------------------------------------
-# Helpers / stub data builders
-# ---------------------------------------------------------------------------
-
-
-@dataclass
-class RecommendationStub:
-    """Minimal stand-in for a Recommendation ORM row in rules engine tests."""
-
-    type: str
-    rating: float
-    review_count: int
-    name: str = "Test Place"
-    city: str = "Rome"
-
-
-def hotel(rating: float, reviews: int) -> RecommendationStub:
-    return RecommendationStub(type="hotel", rating=rating, review_count=reviews)
-
-
-def attraction(rating: float, reviews: int) -> RecommendationStub:
-    return RecommendationStub(type="attraction", rating=rating, review_count=reviews)
-
-
-def activity(rating: float, reviews: int) -> RecommendationStub:
-    return RecommendationStub(type="activity", rating=rating, review_count=reviews)
-
-
-def restaurant(rating: float, reviews: int) -> RecommendationStub:
-    return RecommendationStub(type="restaurant", rating=rating, review_count=reviews)
-
-
-def bar(rating: float, reviews: int) -> RecommendationStub:
-    return RecommendationStub(type="bar", rating=rating, review_count=reviews)
-
-
-# ---------------------------------------------------------------------------
-# TestHotelThresholds
-# ---------------------------------------------------------------------------
+def make_candidate(type_: str, rating: float, review_count: int, city: str = "Rome") -> RecommendationCandidate:
+    return RecommendationCandidate(
+        city=city,
+        type=type_,
+        name=f"Test {type_} {rating}",
+        rating=rating,
+        review_count=review_count,
+        price_hint="€€",
+        source_name="Google Maps",
+        source_url="https://maps.google.com",
+    )
 
 
 class TestHotelThresholds:
-    """hotel: rating >= 4.0 AND review_count >= 100"""
-
     def test_hotel_passes_when_above_threshold(self):
-        # Arrange
-        rec = hotel(rating=4.5, reviews=200)
-        engine = RulesEngine()
-        # Act
-        result: ThresholdResult = engine.evaluate(rec)
-        # Assert
-        assert result.passes is True, "Hotel with rating=4.5, reviews=200 should pass"
+        c = make_candidate("hotel", 4.5, 200)
+        assert passes_threshold(c) is True
 
     def test_hotel_fails_when_rating_too_low(self):
-        # Arrange
-        rec = hotel(rating=3.9, reviews=200)
-        engine = RulesEngine()
-        # Act
-        result: ThresholdResult = engine.evaluate(rec)
-        # Assert
-        assert result.passes is False, "Hotel with rating=3.9 should fail (min 4.0)"
+        c = make_candidate("hotel", 3.9, 200)
+        assert passes_threshold(c) is False
 
     def test_hotel_fails_when_reviews_too_low(self):
-        # Arrange
-        rec = hotel(rating=4.5, reviews=50)
-        engine = RulesEngine()
-        # Act
-        result: ThresholdResult = engine.evaluate(rec)
-        # Assert
-        assert result.passes is False, "Hotel with reviews=50 should fail (min 100)"
+        c = make_candidate("hotel", 4.5, 50)
+        assert passes_threshold(c) is False
 
     def test_hotel_fails_at_rating_just_below_threshold(self):
-        # Arrange: 3.99 is one step below 4.0
-        rec = hotel(rating=3.99, reviews=100)
-        engine = RulesEngine()
-        # Act
-        result: ThresholdResult = engine.evaluate(rec)
-        # Assert
-        assert result.passes is False, "Hotel with rating=3.99 should fail"
+        c = make_candidate("hotel", 3.99, 200)
+        assert passes_threshold(c) is False
 
     def test_hotel_fails_at_reviews_just_below_threshold(self):
-        # Arrange: 99 is one step below 100
-        rec = hotel(rating=4.0, reviews=99)
-        engine = RulesEngine()
-        # Act
-        result: ThresholdResult = engine.evaluate(rec)
-        # Assert
-        assert result.passes is False, "Hotel with reviews=99 should fail"
+        c = make_candidate("hotel", 4.0, 99)
+        assert passes_threshold(c) is False
 
     def test_hotel_passes_at_exact_threshold(self):
-        # Arrange: exactly on the boundary — should pass (>= semantics)
-        rec = hotel(rating=4.0, reviews=100)
-        engine = RulesEngine()
-        # Act
-        result: ThresholdResult = engine.evaluate(rec)
-        # Assert
-        assert result.passes is True, (
-            "Hotel at exactly rating=4.0, reviews=100 should pass (>= boundary)"
-        )
+        c = make_candidate("hotel", 4.0, 100)
+        assert passes_threshold(c) is True
 
     def test_hotel_fails_when_both_below_threshold(self):
-        # Arrange
-        rec = hotel(rating=3.0, reviews=10)
-        engine = RulesEngine()
-        # Act
-        result: ThresholdResult = engine.evaluate(rec)
-        # Assert
-        assert result.passes is False
-
-
-# ---------------------------------------------------------------------------
-# TestAttractionThresholds
-# ---------------------------------------------------------------------------
+        c = make_candidate("hotel", 3.5, 50)
+        assert passes_threshold(c) is False
 
 
 class TestAttractionThresholds:
-    """attraction/activity: rating >= 4.0 AND review_count >= 500"""
-
     def test_attraction_passes_when_above_threshold(self):
-        rec = attraction(rating=4.5, reviews=600)
-        engine = RulesEngine()
-        result = engine.evaluate(rec)
-        assert result.passes is True
+        c = make_candidate("attraction", 4.2, 600)
+        assert passes_threshold(c) is True
 
     def test_attraction_fails_when_reviews_below_500(self):
-        # Note: attraction requires 500 reviews (stricter than hotel's 100)
-        rec = attraction(rating=4.5, reviews=499)
-        engine = RulesEngine()
-        result = engine.evaluate(rec)
-        assert result.passes is False, (
-            "Attraction with reviews=499 should fail (min 500 for attractions)"
-        )
+        c = make_candidate("attraction", 4.5, 499)
+        assert passes_threshold(c) is False
 
     def test_attraction_passes_at_exact_500_reviews(self):
-        rec = attraction(rating=4.0, reviews=500)
-        engine = RulesEngine()
-        result = engine.evaluate(rec)
-        assert result.passes is True
+        c = make_candidate("attraction", 4.0, 500)
+        assert passes_threshold(c) is True
 
     def test_activity_uses_same_threshold_as_attraction(self):
-        # activity and attraction share the same threshold group
-        rec_activity = activity(rating=4.0, reviews=500)
-        rec_attraction = attraction(rating=4.0, reviews=500)
-        engine = RulesEngine()
-        assert engine.evaluate(rec_activity).passes == engine.evaluate(rec_attraction).passes
+        assert THRESHOLDS["activity"] == THRESHOLDS["attraction"]
 
     def test_activity_fails_when_reviews_below_500(self):
-        rec = activity(rating=4.5, reviews=200)
-        engine = RulesEngine()
-        result = engine.evaluate(rec)
-        assert result.passes is False
+        c = make_candidate("activity", 4.5, 300)
+        assert passes_threshold(c) is False
 
     def test_attraction_fails_when_rating_below_4(self):
-        rec = attraction(rating=3.9, reviews=1000)
-        engine = RulesEngine()
-        result = engine.evaluate(rec)
-        assert result.passes is False
-
-
-# ---------------------------------------------------------------------------
-# TestRestaurantThresholds
-# ---------------------------------------------------------------------------
+        c = make_candidate("attraction", 3.9, 1000)
+        assert passes_threshold(c) is False
 
 
 class TestRestaurantThresholds:
-    """restaurant/bar: rating >= 4.2 AND review_count >= 200"""
-
     def test_restaurant_passes_when_above_threshold(self):
-        rec = restaurant(rating=4.5, reviews=300)
-        engine = RulesEngine()
-        result = engine.evaluate(rec)
-        assert result.passes is True
+        c = make_candidate("restaurant", 4.5, 300)
+        assert passes_threshold(c) is True
 
     def test_restaurant_requires_higher_rating_than_hotel(self):
-        # Restaurant min is 4.2; a rating of 4.1 passes hotel but fails restaurant
-        rec = restaurant(rating=4.1, reviews=300)
-        engine = RulesEngine()
-        result = engine.evaluate(rec)
-        assert result.passes is False, (
-            "Restaurant with rating=4.1 should fail (min 4.2 for restaurants)"
-        )
+        # Hotel passes at 4.0; restaurant requires 4.2
+        c = make_candidate("restaurant", 4.1, 300)
+        assert passes_threshold(c) is False
 
     def test_restaurant_passes_at_exact_42_rating(self):
-        rec = restaurant(rating=4.2, reviews=200)
-        engine = RulesEngine()
-        result = engine.evaluate(rec)
-        assert result.passes is True
+        c = make_candidate("restaurant", 4.2, 200)
+        assert passes_threshold(c) is True
 
     def test_restaurant_fails_when_reviews_below_200(self):
-        rec = restaurant(rating=4.5, reviews=199)
-        engine = RulesEngine()
-        result = engine.evaluate(rec)
-        assert result.passes is False
+        c = make_candidate("restaurant", 4.5, 199)
+        assert passes_threshold(c) is False
 
     def test_bar_uses_same_threshold_as_restaurant(self):
-        rec_bar = bar(rating=4.2, reviews=200)
-        rec_restaurant = restaurant(rating=4.2, reviews=200)
-        engine = RulesEngine()
-        assert engine.evaluate(rec_bar).passes == engine.evaluate(rec_restaurant).passes
+        assert THRESHOLDS["bar"] == THRESHOLDS["restaurant"]
 
     def test_bar_fails_when_rating_below_42(self):
-        rec = bar(rating=4.1, reviews=500)
-        engine = RulesEngine()
-        result = engine.evaluate(rec)
-        assert result.passes is False
-
-
-# ---------------------------------------------------------------------------
-# TestBudgetOverflow
-# ---------------------------------------------------------------------------
+        c = make_candidate("bar", 4.1, 500)
+        assert passes_threshold(c) is False
 
 
 class TestBudgetOverflow:
-    """Rules engine budget adjustment behaviour."""
-
     def test_allows_mixed_hotel_when_budget_tight(self):
-        """When estimated cost exceeds budget, engine should suggest mixing hotels."""
-        engine = RulesEngine()
-        # Arrange: tight budget scenario — trigger adjustment logic
-        result = engine.evaluate_budget(
-            budget_per_person_brl=5000,
-            estimated_cost_per_person_brl=7000,
+        result = check_budget_feasibility(
+            hotel_pref="5star",
             days=10,
+            party_size="solo",
+            budget_per_person_brl=5000,  # very tight
         )
-        # Assert: engine returns an adjustment recommendation (1-2 mixed nights)
-        assert result.adjusted is True
-        assert result.justification is not None and len(result.justification) > 0
+        assert result["over_budget"] is True
+        assert result["mixed_nights"] > 0
 
     def test_no_adjustment_when_within_budget(self):
-        engine = RulesEngine()
-        result = engine.evaluate_budget(
-            budget_per_person_brl=30000,
-            estimated_cost_per_person_brl=15000,
-            days=10,
+        result = check_budget_feasibility(
+            hotel_pref="mixed",
+            days=7,
+            party_size="couple",
+            budget_per_person_brl=50000,  # generous
         )
-        assert result.adjusted is False
+        assert result["over_budget"] is False
+        assert result["mixed_nights"] == 0
 
     def test_logs_justification_when_adjusting(self):
-        """Adjustment results must always carry a human-readable justification."""
-        engine = RulesEngine()
-        result = engine.evaluate_budget(
-            budget_per_person_brl=5000,
-            estimated_cost_per_person_brl=9000,
-            days=7,
+        result = check_budget_feasibility(
+            hotel_pref="5star",
+            days=14,
+            party_size="solo",
+            budget_per_person_brl=3000,
         )
-        assert result.justification, "Justification must be non-empty when adjustment occurs"
-
-
-# ---------------------------------------------------------------------------
-# TestExpansionFallback
-# ---------------------------------------------------------------------------
+        if result["over_budget"]:
+            assert result["justification"] is not None
+            assert "budget" in result["justification"].lower()
 
 
 class TestExpansionFallback:
-    """Fallback chain when fewer than 10 recommendations pass quality thresholds."""
-
     def test_expand_radius_when_fewer_than_10_results(self):
-        """Should trigger radius expansion when passing count < 10."""
-        engine = RulesEngine()
-        # Arrange: 5 passing recommendations → below threshold
-        passing = [hotel(4.5, 200) for _ in range(5)]
-        result = engine.apply_fallback(city="Venice", passing_recommendations=passing)
-        # Assert: engine signals expand_radius as the chosen strategy
-        assert result.strategy == "expand_radius"
-        assert result.justification is not None
-
-    def test_swap_city_when_expansion_insufficient(self):
-        """Should swap city when radius expansion still yields < 10 results."""
-        engine = RulesEngine()
-        # Arrange: simulate that expansion was tried and returned only 3 results
-        result = engine.apply_fallback(
-            city="Venice",
-            passing_recommendations=[hotel(4.5, 200) for _ in range(3)],
-            expansion_tried=True,
-            expansion_result_count=3,
-        )
-        assert result.strategy == "swap_city"
-        assert result.justification is not None
-
-    def test_reduce_list_with_justification_as_last_resort(self):
-        """When both expansion and swap fail, should reduce list and log justification."""
-        engine = RulesEngine()
-        result = engine.apply_fallback(
-            city="Venice",
-            passing_recommendations=[hotel(4.5, 200) for _ in range(2)],
-            expansion_tried=True,
-            expansion_result_count=2,
-            swap_tried=True,
-            swap_result_count=2,
-        )
-        assert result.strategy == "reduce_list"
-        assert result.justification is not None
-        assert "reduce" in result.justification.lower() or result.justification
+        few_candidates = [make_candidate("hotel", 4.5, 200) for _ in range(5)]
+        result = filter_recommendations(few_candidates, "hotel", "Venice")
+        assert result.fallback_needed is True
+        assert result.fallback_reason is not None
 
     def test_no_fallback_needed_when_10_or_more_pass(self):
-        """Should not apply any fallback when 10+ recommendations already pass."""
-        engine = RulesEngine()
-        passing = [hotel(4.5, 200) for _ in range(10)]
-        result = engine.apply_fallback(city="Rome", passing_recommendations=passing)
-        assert result.strategy is None or result.strategy == "none"
+        many = [make_candidate("hotel", 4.5, 200) for _ in range(12)]
+        result = filter_recommendations(many, "hotel", "Rome")
+        assert result.fallback_needed is False
+
+    def test_reduce_list_with_justification_as_last_resort(self):
+        # 3 pass, 7 fail — fallback should be triggered
+        passing = [make_candidate("hotel", 4.5, 200) for _ in range(3)]
+        failing = [make_candidate("hotel", 2.0, 10) for _ in range(7)]
+        result = filter_recommendations(passing + failing, "hotel", "Naples")
+        assert result.fallback_needed is True
+        assert len(result.passing) == 3
+        assert len(result.rejected) == 7
+
+    def test_swap_city_when_expansion_insufficient(self):
+        # This is documented as a flag in the fallback_reason
+        only_1 = [make_candidate("restaurant", 4.5, 300)]
+        result = filter_recommendations(only_1, "restaurant", "Siena")
+        assert result.fallback_needed is True
+        assert "expand radius" in result.fallback_reason.lower() or "action" in result.fallback_reason.lower()

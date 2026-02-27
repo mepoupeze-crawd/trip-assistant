@@ -22,7 +22,7 @@ from src.api.schemas import (
     TripStatusResponse,
     ValidationErrorResponse,
 )
-from src.db.models import Payment, Trip, TripOutput, User
+from src.db.models import Trip, TripOutput, User
 from src.db.session import get_session
 from src.worker.celery_app import celery_app
 
@@ -104,21 +104,6 @@ async def generate_trip(
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail={"error": "trip_not_found"},
-        )
-
-    # Check payment is confirmed (status == "paid")
-    result = await session.execute(
-        select(Payment).where(
-            Payment.trip_id == trip_id,
-            Payment.status == "paid",
-        )
-    )
-    paid_payment = result.scalar_one_or_none()
-
-    if paid_payment is None:
-        raise HTTPException(
-            status_code=status.HTTP_409_CONFLICT,
-            detail={"error": "payment_not_confirmed"},
         )
 
     # Idempotency: if output already queued/running/done, return existing
