@@ -16,6 +16,7 @@ All API calls use X-API-Key from settings (C7 contract).
 
 from __future__ import annotations
 
+import io
 import structlog
 import httpx
 from telegram import Update
@@ -135,14 +136,37 @@ async def check_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
 
         log.info("trip_delivered", user_id=user.id, trip_id=trip_id)
 
-        await update.message.reply_text(
-            "🎉 *Your trip plan is ready!*\n\n"
-            f"📄 [Download PDF]({pdf_url})\n"
-            f"📝 [Download DOCX]({docx_url})\n\n"
-            "Links are valid for 7 days. Enjoy your trip! ✈️",
-            parse_mode=ParseMode.MARKDOWN,
-            disable_web_page_preview=True,
-        )
+        await update.message.reply_text("🎉 *Your trip plan is ready!* Sending your files now...", parse_mode=ParseMode.MARKDOWN)
+
+        # Download and send PDF
+        try:
+            async with httpx.AsyncClient(timeout=60.0) as dl:
+                pdf_resp = await dl.get(pdf_url)
+                pdf_resp.raise_for_status()
+            await update.message.reply_document(
+                document=io.BytesIO(pdf_resp.content),
+                filename="itinerary.pdf",
+                caption="📄 Your itinerary — PDF",
+            )
+        except Exception as exc:
+            log.error("pdf_send_failed", user_id=user.id, trip_id=trip_id, error=str(exc))
+            await update.message.reply_text(f"📄 [Download PDF]({pdf_url})", parse_mode=ParseMode.MARKDOWN, disable_web_page_preview=True)
+
+        # Download and send DOCX
+        try:
+            async with httpx.AsyncClient(timeout=60.0) as dl:
+                docx_resp = await dl.get(docx_url)
+                docx_resp.raise_for_status()
+            await update.message.reply_document(
+                document=io.BytesIO(docx_resp.content),
+                filename="itinerary.docx",
+                caption="📝 Your itinerary — DOCX (editable)",
+            )
+        except Exception as exc:
+            log.error("docx_send_failed", user_id=user.id, trip_id=trip_id, error=str(exc))
+            await update.message.reply_text(f"📝 [Download DOCX]({docx_url})", parse_mode=ParseMode.MARKDOWN, disable_web_page_preview=True)
+
+        await update.message.reply_text("Enjoy your trip! ✈️")
         return
 
     # ── Unknown status (defensive) ────────────────────────────────────────────
