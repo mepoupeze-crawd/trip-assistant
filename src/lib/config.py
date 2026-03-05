@@ -6,6 +6,8 @@ All secrets come from env vars — never hardcoded.
 
 from __future__ import annotations
 
+from typing import Literal
+
 from pydantic import AnyUrl, Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
@@ -80,6 +82,16 @@ class Settings(BaseSettings):
     api_base_url: str = Field(
         default="http://api:8000",
         description="Internal API base URL used by the bot process",
+    )
+
+    # ── Recommendation Provider ───────────────────────────────────────────────
+    recommendation_provider: Literal["stub", "google_places"] = Field(
+        default="stub",
+        description="Recommendation data source. 'stub' for dev/tests, 'google_places' for production.",
+    )
+    google_places_api_key: str | None = Field(
+        default=None,
+        description="Google Places API key. Required when RECOMMENDATION_PROVIDER=google_places.",
     )
 
 

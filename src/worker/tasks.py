@@ -47,101 +47,6 @@ def _get_retry_countdown(attempt: int) -> int:
     return RETRY_COUNTDOWNS[idx]
 
 
-def _build_stub_recommendations(
-    trip_data: dict[str, Any],
-) -> list[RecommendationCandidate]:
-    """Build placeholder recommendations for the trip.
-
-    In production, this would call a data layer (Google Maps API, TripAdvisor,
-    web scraper, etc.). For the MVP, stubs are used so the pipeline is end-to-end
-    runnable without external API keys.
-
-    Stubs pass quality thresholds so the rules engine lets them through.
-    """
-    country: str = trip_data.get("country", "Italy")
-    cities: list[str] = trip_data.get("cities", [country])
-
-    candidates: list[RecommendationCandidate] = []
-
-    for city in cities:
-        # Hotels — threshold: 4.0 rating, 100 reviews
-        for i in range(12):
-            candidates.append(
-                RecommendationCandidate(
-                    city=city,
-                    type="hotel",
-                    name=f"{city} Grand Hotel {i+1}",
-                    rating=4.1 + (i % 5) * 0.1,
-                    review_count=120 + i * 20,
-                    price_hint="€€€" if i < 5 else "€€",
-                    source_name="TripAdvisor",
-                    source_url=f"https://tripadvisor.com/hotels/{city.lower().replace(' ', '-')}-{i+1}",
-                )
-            )
-
-        # Attractions — threshold: 4.0 rating, 500 reviews
-        for i in range(12):
-            candidates.append(
-                RecommendationCandidate(
-                    city=city,
-                    type="attraction",
-                    name=f"{city} Museum {i+1}",
-                    rating=4.2 + (i % 4) * 0.1,
-                    review_count=600 + i * 100,
-                    price_hint=None,
-                    source_name="Google Maps",
-                    source_url=f"https://maps.google.com/?q={city.replace(' ', '+')}+museum+{i+1}",
-                )
-            )
-
-        # Activities — threshold: 4.0 rating, 500 reviews
-        for i in range(12):
-            candidates.append(
-                RecommendationCandidate(
-                    city=city,
-                    type="activity",
-                    name=f"{city} Walking Tour {i+1}",
-                    rating=4.3 + (i % 3) * 0.1,
-                    review_count=550 + i * 80,
-                    price_hint="€" if i < 6 else "€€",
-                    source_name="GetYourGuide",
-                    source_url=f"https://getyourguide.com/s/{city.lower().replace(' ', '-')}-tour-{i+1}",
-                )
-            )
-
-        # Restaurants — threshold: 4.2 rating, 200 reviews
-        for i in range(12):
-            candidates.append(
-                RecommendationCandidate(
-                    city=city,
-                    type="restaurant",
-                    name=f"Osteria {city} {i+1}",
-                    rating=4.3 + (i % 4) * 0.1,
-                    review_count=250 + i * 30,
-                    price_hint="€€" if i < 6 else "€€€",
-                    source_name="Google Maps",
-                    source_url=f"https://maps.google.com/?q={city.replace(' ', '+')}+restaurant+{i+1}",
-                )
-            )
-
-        # Bars — threshold: 4.2 rating, 200 reviews
-        for i in range(12):
-            candidates.append(
-                RecommendationCandidate(
-                    city=city,
-                    type="bar",
-                    name=f"Bar {city} {i+1}",
-                    rating=4.3 + (i % 3) * 0.1,
-                    review_count=210 + i * 25,
-                    price_hint="€",
-                    source_name="Google Maps",
-                    source_url=f"https://maps.google.com/?q={city.replace(' ', '+')}+bar+{i+1}",
-                )
-            )
-
-    return candidates
-
-
 async def _run_generation(trip_id: str, output_id: str) -> tuple[str, str]:
     """Core async generation logic — returns (pdf_url, docx_url).
 
@@ -177,15 +82,17 @@ async def _run_generation(trip_id: str, output_id: str) -> tuple[str, str]:
         city_slots = select_cities(country, days, preferences)
         cities = [slot.city for slot in city_slots]
 
-        trip_data: dict[str, Any] = {
-            "country": country,
-            "cities": cities,
-            "days": days,
-            "party_size": trip.party_size,
-            "preferences": preferences,
-        }
+        from src.lib.config import settings
+        from src.worker.providers import get_provider
 
-        candidates = _build_stub_recommendations(trip_data)
+        provider = get_provider(settings)
+        candidates = provider.get_recommendations(
+            country=country,
+            cities=cities,
+            days=days,
+            party_size=trip.party_size,
+            preferences=preferences,
+        )
 
         # ── 3. Apply rules engine ─────────────────────────────────────────────
         all_types = ["hotel", "attraction", "activity", "restaurant", "bar"]

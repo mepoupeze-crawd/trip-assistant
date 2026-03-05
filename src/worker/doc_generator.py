@@ -77,7 +77,7 @@ def _build_pdf_city_section(
         elements.append(Paragraph(label, styles["Heading2"]))
 
         for rec in items:
-            rating_str = f"⭐ {rec.rating}" if rec.rating else ""
+            rating_str = f"⭐ {rec.rating:.1f}" if rec.rating else ""
             reviews_str = f"({rec.review_count} reviews)" if rec.review_count else ""
             price_str = f" | {rec.price_hint}" if rec.price_hint else ""
 
@@ -119,7 +119,7 @@ def _build_pdf_schedule_table(
         ]
         table_data.append(row)
 
-    col_widths = [2.5 * cm, 3.5 * cm, 4 * cm, 4.5 * cm, 4.5 * cm, 4.5 * cm]
+    col_widths = [2.0 * cm, 2.7 * cm, 3.0 * cm, 3.4 * cm, 3.4 * cm, 3.5 * cm]
 
     table = Table(table_data, colWidths=col_widths, repeatRows=1)
     table.setStyle(
@@ -250,7 +250,7 @@ def _add_docx_city_section(
             run = para.add_run(rec.name)
             run.bold = True
 
-            rating_str = f"  ⭐ {rec.rating}" if rec.rating else ""
+            rating_str = f"  ⭐ {rec.rating:.1f}" if rec.rating else ""
             reviews_str = f" ({rec.review_count} reviews)" if rec.review_count else ""
             price_str = f" | {rec.price_hint}" if rec.price_hint else ""
 

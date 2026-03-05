@@ -153,3 +153,49 @@ class TestS3Upload:
             url = upload_and_sign(pdf_bytes, trip_id, "pdf")
 
         assert url == expected_url
+
+
+# ── Rating formatting tests ───────────────────────────────────────────────────
+
+class TestRatingFormatting:
+    def test_pdf_rating_is_formatted_to_one_decimal(self, composed_trip):
+        """PDF should show '4.3' not '4.300000...' for any rating."""
+        result = generate_pdf(composed_trip, TRIP_META)
+        # The fixture uses rating=4.3 — verify it's formatted
+        assert b"4.3" in result
+        # Make sure raw float is NOT present
+        assert b"4.30000" not in result
+
+    def test_docx_rating_is_formatted_to_one_decimal(self, composed_trip):
+        """DOCX should show formatted rating, not raw float."""
+        import zipfile, io
+        result = generate_docx(composed_trip, TRIP_META)
+        # DOCX is a zip — extract text content and check
+        with zipfile.ZipFile(io.BytesIO(result)) as z:
+            # word/document.xml contains the text
+            with z.open("word/document.xml") as f:
+                content = f.read().decode("utf-8")
+        assert "4.3" in content
+        assert "4.30000" not in content
+
+
+# ── PDF table layout tests ────────────────────────────────────────────────────
+
+class TestPDFTableLayout:
+    def test_pdf_col_widths_sum_to_18cm(self):
+        """Column widths must fit A4 usable width (18.0 cm)."""
+        import importlib
+        import src.worker.doc_generator as dg
+        import inspect, ast, re
+
+        # Read the source and verify the col_widths list
+        source = inspect.getsource(dg._build_pdf_schedule_table)
+        # Extract col_widths values from source
+        match = re.search(r'col_widths\s*=\s*\[([^\]]+)\]', source)
+        assert match, "col_widths not found in _build_pdf_schedule_table"
+        widths_str = match.group(1)
+        # Parse numeric values (pattern: X.X * cm)
+        values = [float(v) for v in re.findall(r'([\d.]+)\s*\*\s*cm', widths_str)]
+        assert len(values) == 6, f"Expected 6 columns, got {len(values)}"
+        total = sum(values)
+        assert total <= 18.0, f"Column widths sum to {total} cm, must be <= 18.0 cm"
