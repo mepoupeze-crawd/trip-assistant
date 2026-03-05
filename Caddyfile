@@ -1,0 +1,7 @@
+# Caddyfile — substitua "seu-dominio.com" pelo seu domínio real.
+# Caddy obtém e renova o certificado Let's Encrypt automaticamente.
+# Para testar sem domínio, troque por ":8080" e remova o bloco tls.
+
+seu-dominio.com {
+    reverse_proxy api:8000
+}

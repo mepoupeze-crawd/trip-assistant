@@ -115,3 +115,39 @@ jobs:
             -e PROCESS_TYPE=worker \
             trip-planner:${{ github.sha }} \
             python -c "from src.worker.tasks import generate_trip; print('Worker OK')"
+
+  # ── Deploy ─────────────────────────────────────────────────────────────────────
+  deploy:
+    name: Deploy to GCP VM
+    runs-on: ubuntu-latest
+    needs: [build]
+    # Only deploy on push to main (not on PRs)
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+
+    steps:
+      - name: Deploy via SSH
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ secrets.GCP_VM_HOST }}
+          username: ${{ secrets.GCP_VM_USER }}
+          key: ${{ secrets.GCP_SSH_KEY }}
+          script: |
+            set -e
+            cd /app
+
+            # Pull latest code
+            git pull origin main
+
+            # Rebuild image with new code
+            docker compose -f docker-compose.yml -f docker-compose.prod.yml build --pull
+
+            # Run migrations (idempotent — safe to run on every deploy)
+            docker compose -f docker-compose.yml -f docker-compose.prod.yml run --rm migrate
+
+            # Restart services with zero downtime (compose replaces containers one by one)
+            docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d
+
+            # Clean up dangling images to save disk space
+            docker image prune -f
+
+            echo "Deploy complete — $(date)"

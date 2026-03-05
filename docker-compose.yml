@@ -41,6 +41,7 @@ services:
 
   minio:
     image: minio/minio:latest
+    profiles: ["dev"]   # only starts with: docker compose --profile dev up
     restart: unless-stopped
     command: server /data --console-address ":9001"
     environment:

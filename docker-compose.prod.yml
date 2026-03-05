@@ -1,40 +1,38 @@
 version: "3.9"
 
-# Production overrides — use with:
-#   docker-compose -f docker-compose.yml -f docker-compose.prod.yml up -d
+# GCP VM production overrides.
+# Usage: docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d
 #
-# In production:
-# - Postgres and Redis are managed services (not run in compose)
-# - All secrets come from the hosting platform's secret/env injection
-# - The "image" field is set to a registry image (replace with your registry URL)
-# - Healthcheck retries are more conservative for cold starts
+# What this file does vs docker-compose.yml:
+#   - Postgres and Redis: removes external port exposure (internal only)
+#   - All app processes: restart: always + ENVIRONMENT=production
+#   - Adds Caddy reverse proxy for automatic HTTPS (requires a domain in Caddyfile)
+#   - MinIO is excluded (profiles: ["dev"] in base file)
 
 services:
 
-  # Managed services — remove these blocks if using an external DB/Redis
+  # ── Infrastructure (containerized on the VM) ─────────────────────────────
+
   postgres:
-    # In production, use a managed PostgreSQL (Railway, Neon, Supabase, RDS, etc.)
-    # Comment this block out and set DATABASE_URL in environment secrets instead.
     restart: always
+    ports: []   # not exposed externally in production
 
   redis:
-    # In production, use a managed Redis (Railway, Upstash, Elasticache, etc.)
-    # Comment this block out and set REDIS_URL in environment secrets instead.
     restart: always
+    ports: []   # not exposed externally in production
+
+  # ── App processes ─────────────────────────────────────────────────────────
 
   api:
-    # Replace with your registry image tag after CI builds it:
-    # image: ghcr.io/your-org/trip-planner:${IMAGE_TAG}
     restart: always
     environment:
       PROCESS_TYPE: api
       ENVIRONMENT: production
       LOG_LEVEL: INFO
-    healthcheck:
-      start_period: 30s
+    # Port 8000 is accessed internally by Caddy — not exposed to host
+    ports: []
 
   bot:
-    # image: ghcr.io/your-org/trip-planner:${IMAGE_TAG}
     restart: always
     environment:
       PROCESS_TYPE: bot
@@ -42,7 +40,6 @@ services:
       LOG_LEVEL: INFO
 
   worker:
-    # image: ghcr.io/your-org/trip-planner:${IMAGE_TAG}
     restart: always
     environment:
       PROCESS_TYPE: worker
@@ -50,8 +47,29 @@ services:
       LOG_LEVEL: INFO
 
   migrate:
-    # image: ghcr.io/your-org/trip-planner:${IMAGE_TAG}
     environment:
       PROCESS_TYPE: migrate
       ENVIRONMENT: production
     restart: "no"
+
+  # ── Caddy — automatic HTTPS ───────────────────────────────────────────────
+  # Requires: a domain pointing to this VM's IP + Caddyfile in /app/Caddyfile
+
+  caddy:
+    image: caddy:2-alpine
+    restart: always
+    ports:
+      - "80:80"
+      - "443:443"
+      - "443:443/udp"   # HTTP/3
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    depends_on:
+      api:
+        condition: service_healthy
+
+volumes:
+  caddy_data:
+  caddy_config:
